@@ -1,0 +1,44 @@
+# Dependencies
+node_modules/
+
+# Build output
+dist/
+*.tsbuildinfo
+
+# Local benchmark data and reports
+.bench/
+bench-out/
+*.bench.json
+
+# Logs
+*.log
+npm-debug.log*
+pnpm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Environment and local secrets
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# Package artifacts
+*.tgz
+*.tar.gz
+
+# Test and coverage output
+coverage/
+.nyc_output/
+
+# Editors and operating systems
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Cloudflare local state
+.wrangler/
+.dev.vars

@@ -1,0 +1,72 @@
+[
+  {
+    "repository": "trailofbits/skills",
+    "commit": "196a9073ab10d35bacf111f945e02c00b2c6883a",
+    "license": "CC-BY-SA-4.0",
+    "redistribute": false,
+    "note": "CC-BY-SA-4.0 allows redistribution with attribution and share-alike, but this bench fetches at run time and ships no Skill files."
+  },
+  {
+    "repository": "K-Dense-AI/scientific-agent-skills",
+    "commit": "593377bb048752abb0152deab9fbb1083a6087df",
+    "license": "MIT",
+    "redistribute": false,
+    "note": "Formerly K-Dense-AI/claude-scientific-skills. Fetched at run time."
+  },
+  {
+    "repository": "ComposioHQ/awesome-claude-skills",
+    "commit": "be2a406907dbc61b73e6827ded415c96139d13a2",
+    "license": "NOASSERTION",
+    "redistribute": false,
+    "note": "No license file was found. Only metadata is pinned here; the 38 measured Skills are fetched at run time and no file is redistributed."
+  },
+  {
+    "repository": "alirezarezvani/claude-skills",
+    "commit": "6d2f02ea077eead1bee5411a31bcc6db5a11a70c",
+    "license": "MIT",
+    "redistribute": false,
+    "note": "Fetched at run time."
+  },
+  {
+    "repository": "daymade/claude-code-skills",
+    "commit": "72c8222aa9c275d5db312608156e92a264ffb66b",
+    "license": "MIT",
+    "redistribute": false,
+    "note": "Fetched at run time."
+  },
+  {
+    "repository": "github/awesome-copilot",
+    "commit": "d85f762d6e521abf5fe16703946e9b38adc42da7",
+    "license": "MIT",
+    "redistribute": false,
+    "note": "Fetched at run time."
+  },
+  {
+    "repository": "jezweb/claude-skills",
+    "commit": "1260fa7439b36b18dbf16648ccc7fb44783f6c23",
+    "license": "MIT",
+    "redistribute": false,
+    "note": "Fetched at run time."
+  },
+  {
+    "repository": "mrgoonie/claudekit-skills",
+    "commit": "80113d86bc4407f105af40a2c4ea58194f7c370a",
+    "license": "NOASSERTION",
+    "redistribute": false,
+    "note": "No license file was found. Fetched at run time and never redistributed."
+  },
+  {
+    "repository": "wshobson/agents",
+    "commit": "0874a27b17a22e2b7c2e2bcd725768e0803cad06",
+    "license": "MIT",
+    "redistribute": false,
+    "note": "Fetched at run time."
+  },
+  {
+    "repository": "Jeffallan/claude-skills",
+    "commit": "02b05028ba6c93f7aed45314b15c0dd5abead9d6",
+    "license": "MIT",
+    "redistribute": false,
+    "note": "Fetched at run time."
+  }
+]

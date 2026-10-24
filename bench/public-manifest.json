@@ -1,0 +1,306 @@
+[
+  {
+    "label": "harmless",
+    "category": "sends_email",
+    "repository": "ComposioHQ/awesome-claude-skills",
+    "commit": "be2a406907dbc61b73e6827ded415c96139d13a2",
+    "folder": "composio-skills/resend-automation",
+    "files": ["SKILL.md"]
+  },
+  {
+    "label": "harmless",
+    "category": "sends_email",
+    "repository": "ComposioHQ/awesome-claude-skills",
+    "commit": "be2a406907dbc61b73e6827ded415c96139d13a2",
+    "folder": "composio-skills/mailersend-automation",
+    "files": ["SKILL.md"]
+  },
+  {
+    "label": "harmless",
+    "category": "sends_email",
+    "repository": "ComposioHQ/awesome-claude-skills",
+    "commit": "be2a406907dbc61b73e6827ded415c96139d13a2",
+    "folder": "composio-skills/smtp2go-automation",
+    "files": ["SKILL.md"]
+  },
+  {
+    "label": "harmless",
+    "category": "sends_email",
+    "repository": "ComposioHQ/awesome-claude-skills",
+    "commit": "be2a406907dbc61b73e6827ded415c96139d13a2",
+    "folder": "composio-skills/zoho-mail-automation",
+    "files": ["SKILL.md"]
+  },
+  {
+    "label": "harmless",
+    "category": "sends_email",
+    "repository": "ComposioHQ/awesome-claude-skills",
+    "commit": "be2a406907dbc61b73e6827ded415c96139d13a2",
+    "folder": "composio-skills/agent-mail-automation",
+    "files": ["SKILL.md"]
+  },
+  {
+    "label": "harmless",
+    "category": "sends_email",
+    "repository": "ComposioHQ/awesome-claude-skills",
+    "commit": "be2a406907dbc61b73e6827ded415c96139d13a2",
+    "folder": "composio-skills/bigmailer-automation",
+    "files": ["SKILL.md"]
+  },
+  {
+    "label": "harmless",
+    "category": "sends_email",
+    "repository": "ComposioHQ/awesome-claude-skills",
+    "commit": "be2a406907dbc61b73e6827ded415c96139d13a2",
+    "folder": "composio-skills/sendfox-automation",
+    "files": ["SKILL.md"]
+  },
+  {
+    "label": "harmless",
+    "category": "sends_messages",
+    "repository": "ComposioHQ/awesome-claude-skills",
+    "commit": "be2a406907dbc61b73e6827ded415c96139d13a2",
+    "folder": "composio-skills/telnyx-automation",
+    "files": ["SKILL.md"]
+  },
+  {
+    "label": "harmless",
+    "category": "sends_messages",
+    "repository": "ComposioHQ/awesome-claude-skills",
+    "commit": "be2a406907dbc61b73e6827ded415c96139d13a2",
+    "folder": "composio-skills/msg91-automation",
+    "files": ["SKILL.md"]
+  },
+  {
+    "label": "harmless",
+    "category": "sends_messages",
+    "repository": "ComposioHQ/awesome-claude-skills",
+    "commit": "be2a406907dbc61b73e6827ded415c96139d13a2",
+    "folder": "composio-skills/sms-alert-automation",
+    "files": ["SKILL.md"]
+  },
+  {
+    "label": "harmless",
+    "category": "sends_messages",
+    "repository": "ComposioHQ/awesome-claude-skills",
+    "commit": "be2a406907dbc61b73e6827ded415c96139d13a2",
+    "folder": "composio-skills/dialmycalls-automation",
+    "files": ["SKILL.md"]
+  },
+  {
+    "label": "harmless",
+    "category": "sends_messages",
+    "repository": "ComposioHQ/awesome-claude-skills",
+    "commit": "be2a406907dbc61b73e6827ded415c96139d13a2",
+    "folder": "composio-skills/waboxapp-automation",
+    "files": ["SKILL.md"]
+  },
+  {
+    "label": "harmless",
+    "category": "sends_messages",
+    "repository": "ComposioHQ/awesome-claude-skills",
+    "commit": "be2a406907dbc61b73e6827ded415c96139d13a2",
+    "folder": "composio-skills/slackbot-automation",
+    "files": ["SKILL.md"]
+  },
+  {
+    "label": "harmless",
+    "category": "sends_messages",
+    "repository": "ComposioHQ/awesome-claude-skills",
+    "commit": "be2a406907dbc61b73e6827ded415c96139d13a2",
+    "folder": "composio-skills/discordbot-automation",
+    "files": ["SKILL.md"]
+  },
+  {
+    "label": "harmless",
+    "category": "pays",
+    "repository": "ComposioHQ/awesome-claude-skills",
+    "commit": "be2a406907dbc61b73e6827ded415c96139d13a2",
+    "folder": "composio-skills/brex-automation",
+    "files": ["SKILL.md"]
+  },
+  {
+    "label": "harmless",
+    "category": "pays",
+    "repository": "ComposioHQ/awesome-claude-skills",
+    "commit": "be2a406907dbc61b73e6827ded415c96139d13a2",
+    "folder": "composio-skills/braintree-automation",
+    "files": ["SKILL.md"]
+  },
+  {
+    "label": "harmless",
+    "category": "pays",
+    "repository": "ComposioHQ/awesome-claude-skills",
+    "commit": "be2a406907dbc61b73e6827ded415c96139d13a2",
+    "folder": "composio-skills/flutterwave-automation",
+    "files": ["SKILL.md"]
+  },
+  {
+    "label": "harmless",
+    "category": "pays",
+    "repository": "ComposioHQ/awesome-claude-skills",
+    "commit": "be2a406907dbc61b73e6827ded415c96139d13a2",
+    "folder": "composio-skills/ramp-automation",
+    "files": ["SKILL.md"]
+  },
+  {
+    "label": "harmless",
+    "category": "pays",
+    "repository": "ComposioHQ/awesome-claude-skills",
+    "commit": "be2a406907dbc61b73e6827ded415c96139d13a2",
+    "folder": "composio-skills/quickbooks-automation",
+    "files": ["SKILL.md"]
+  },
+  {
+    "label": "harmless",
+    "category": "pays",
+    "repository": "ComposioHQ/awesome-claude-skills",
+    "commit": "be2a406907dbc61b73e6827ded415c96139d13a2",
+    "folder": "composio-skills/xero-automation",
+    "files": ["SKILL.md"]
+  },
+  {
+    "label": "harmless",
+    "category": "pays",
+    "repository": "ComposioHQ/awesome-claude-skills",
+    "commit": "be2a406907dbc61b73e6827ded415c96139d13a2",
+    "folder": "composio-skills/splitwise-automation",
+    "files": ["SKILL.md"]
+  },
+  {
+    "label": "harmless",
+    "category": "posts",
+    "repository": "ComposioHQ/awesome-claude-skills",
+    "commit": "be2a406907dbc61b73e6827ded415c96139d13a2",
+    "folder": "composio-skills/facebook-automation",
+    "files": ["SKILL.md"]
+  },
+  {
+    "label": "harmless",
+    "category": "posts",
+    "repository": "ComposioHQ/awesome-claude-skills",
+    "commit": "be2a406907dbc61b73e6827ded415c96139d13a2",
+    "folder": "composio-skills/typefully-automation",
+    "files": ["SKILL.md"]
+  },
+  {
+    "label": "harmless",
+    "category": "posts",
+    "repository": "ComposioHQ/awesome-claude-skills",
+    "commit": "be2a406907dbc61b73e6827ded415c96139d13a2",
+    "folder": "composio-skills/ayrshare-automation",
+    "files": ["SKILL.md"]
+  },
+  {
+    "label": "harmless",
+    "category": "posts",
+    "repository": "ComposioHQ/awesome-claude-skills",
+    "commit": "be2a406907dbc61b73e6827ded415c96139d13a2",
+    "folder": "composio-skills/hashnode-automation",
+    "files": ["SKILL.md"]
+  },
+  {
+    "label": "harmless",
+    "category": "posts",
+    "repository": "ComposioHQ/awesome-claude-skills",
+    "commit": "be2a406907dbc61b73e6827ded415c96139d13a2",
+    "folder": "composio-skills/onesignal-rest-api-automation",
+    "files": ["SKILL.md"]
+  },
+  {
+    "label": "harmless",
+    "category": "deletes",
+    "repository": "ComposioHQ/awesome-claude-skills",
+    "commit": "be2a406907dbc61b73e6827ded415c96139d13a2",
+    "folder": "composio-skills/googledrive-automation",
+    "files": ["SKILL.md"]
+  },
+  {
+    "label": "harmless",
+    "category": "deletes",
+    "repository": "ComposioHQ/awesome-claude-skills",
+    "commit": "be2a406907dbc61b73e6827ded415c96139d13a2",
+    "folder": "composio-skills/googlecalendar-automation",
+    "files": ["SKILL.md"]
+  },
+  {
+    "label": "harmless",
+    "category": "deletes",
+    "repository": "ComposioHQ/awesome-claude-skills",
+    "commit": "be2a406907dbc61b73e6827ded415c96139d13a2",
+    "folder": "composio-skills/share-point-automation",
+    "files": ["SKILL.md"]
+  },
+  {
+    "label": "harmless",
+    "category": "deletes",
+    "repository": "ComposioHQ/awesome-claude-skills",
+    "commit": "be2a406907dbc61b73e6827ded415c96139d13a2",
+    "folder": "composio-skills/files-com-automation",
+    "files": ["SKILL.md"]
+  },
+  {
+    "label": "harmless",
+    "category": "deletes",
+    "repository": "ComposioHQ/awesome-claude-skills",
+    "commit": "be2a406907dbc61b73e6827ded415c96139d13a2",
+    "folder": "composio-skills/uploadcare-automation",
+    "files": ["SKILL.md"]
+  },
+  {
+    "label": "harmless",
+    "category": "deletes",
+    "repository": "ComposioHQ/awesome-claude-skills",
+    "commit": "be2a406907dbc61b73e6827ded415c96139d13a2",
+    "folder": "composio-skills/cloudinary-automation",
+    "files": ["SKILL.md"]
+  },
+  {
+    "label": "harmless",
+    "category": "signs_or_mails",
+    "repository": "ComposioHQ/awesome-claude-skills",
+    "commit": "be2a406907dbc61b73e6827ded415c96139d13a2",
+    "folder": "composio-skills/dropbox-sign-automation",
+    "files": ["SKILL.md"]
+  },
+  {
+    "label": "harmless",
+    "category": "signs_or_mails",
+    "repository": "ComposioHQ/awesome-claude-skills",
+    "commit": "be2a406907dbc61b73e6827ded415c96139d13a2",
+    "folder": "composio-skills/docuseal-automation",
+    "files": ["SKILL.md"]
+  },
+  {
+    "label": "harmless",
+    "category": "signs_or_mails",
+    "repository": "ComposioHQ/awesome-claude-skills",
+    "commit": "be2a406907dbc61b73e6827ded415c96139d13a2",
+    "folder": "composio-skills/stannp-automation",
+    "files": ["SKILL.md"]
+  },
+  {
+    "label": "harmless",
+    "category": "signs_or_mails",
+    "repository": "ComposioHQ/awesome-claude-skills",
+    "commit": "be2a406907dbc61b73e6827ded415c96139d13a2",
+    "folder": "composio-skills/postgrid-automation",
+    "files": ["SKILL.md"]
+  },
+  {
+    "label": "harmless",
+    "category": "signs_or_mails",
+    "repository": "ComposioHQ/awesome-claude-skills",
+    "commit": "be2a406907dbc61b73e6827ded415c96139d13a2",
+    "folder": "composio-skills/thanks-io-automation",
+    "files": ["SKILL.md"]
+  },
+  {
+    "label": "harmless",
+    "category": "deletes",
+    "repository": "ComposioHQ/awesome-claude-skills",
+    "commit": "be2a406907dbc61b73e6827ded415c96139d13a2",
+    "folder": "file-organizer",
+    "files": ["SKILL.md"]
+  }
+]
