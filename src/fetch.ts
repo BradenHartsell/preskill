@@ -7,7 +7,7 @@
  * folder.
  */
 
-import type { SkillInputFile, SkillSource } from "./types.js";
+import type { Ruleset, SkillInputFile, SkillMissingFile, SkillSource } from "./types.js";
 
 export const bundleMaxBytes = 16 * 1024 * 1024;
 export const bundleMaxFiles = 256;
@@ -16,11 +16,17 @@ const pathMaxLength = 512;
 export interface FetchedSkill {
   readonly files: readonly SkillInputFile[];
   readonly source: SkillSource;
-  readonly missingFiles: readonly { path: string; reason: "not_found" | "unavailable" | "unsafe_path" | "too_large" }[];
+  readonly missingFiles: readonly SkillMissingFile[];
 }
 
 export interface FetchSkillOptions {
   readonly fetch?: typeof fetch;
+  /**
+   * Default `"v1"`. Under `"v2"` the reader also follows bare document names in
+   * prose (`see REFERENCE.md`, outside fenced code), and marks one the host does
+   * not find with `bareName`, which `scanSkill` under v2 flags instead of refusing.
+   */
+  readonly ruleset?: Ruleset;
 }
 
 /** A pasted link as an https URL without its fragment. */
@@ -102,21 +108,52 @@ const referenceLinkTarget = /^\s{0,3}\[[^\]]+\]:\s*<?(\S+?)>?(?:\s|$)/gmu;
 const pathMention = /(?<![\w./@:-])((?:\.\/)?[A-Za-z0-9_][\w.-]*(?:\/[\w.-]+)+)(?![\w/-])/gu;
 
 /**
+ * Ruleset v2: a bare document name in prose, the usual way a Skill names a
+ * reference file ("see REFERENCE.md", "read FORMS.md"). Only document
+ * extensions: Skills name example files (`input.pdf`, `package.json`) that
+ * are not their own, and a fenced code block is example code, so fenced
+ * blocks are skipped.
+ */
+const bareDocumentMention = /(?<![\w./@:\\-])([A-Za-z0-9_][\w.-]*\.(?:md|markdown|txt))(?!\.?[\w/-])/giu;
+const fencedCodeBlock = /^ {0,3}(`{3,}|~{3,})[^\n]*\n[\s\S]*?^ {0,3}\1[^\n]*$/gmu;
+
+/** One file a text names, and whether it was named only as a bare document name. */
+export interface NamedSkillFile {
+  readonly path: string;
+  readonly bareName: boolean;
+}
+
+/**
  * The Skill's own files a text names, as paths from the Skill's root: the
  * targets of Markdown links, and any relative path with a folder and a file
  * extension (`scripts/fill_form.py`, `references/api.md`). Addresses with a
  * scheme, absolute paths, and anything climbing out of the Skill are not its
- * files.
+ * files. Under ruleset v2, bare document names in prose outside fenced code
+ * (`REFERENCE.md`) are also named, read like a link from the naming file's folder.
  */
-export function namedSkillFiles(text: string, fromFolder: string): string[] {
-  const named: string[] = [];
-  const add = (raw: string | undefined, linked: boolean): void => {
+export function namedSkillFiles(text: string, fromFolder: string, options: { readonly ruleset?: Ruleset } = {}): string[] {
+  return namedSkillFileRefs(text, fromFolder, options).map((file) => file.path);
+}
+
+/** `namedSkillFiles`, with whether each path was named only as a bare document name. */
+export function namedSkillFileRefs(
+  text: string,
+  fromFolder: string,
+  options: { readonly ruleset?: Ruleset } = {},
+): NamedSkillFile[] {
+  const named: NamedSkillFile[] = [];
+  const add = (raw: string | undefined, linked: boolean, bareName: boolean): void => {
     const path = skillRelativePath(raw ?? "", fromFolder, linked);
-    if (path && !named.includes(path)) named.push(path);
+    if (path && !named.some((file) => file.path === path)) named.push({ path, bareName });
   };
-  for (const match of text.matchAll(markdownLinkTarget)) add(match[1], true);
-  for (const match of text.matchAll(referenceLinkTarget)) add(match[1], true);
-  for (const match of text.matchAll(pathMention)) add(match[1], false);
+  for (const match of text.matchAll(markdownLinkTarget)) add(match[1], true, false);
+  for (const match of text.matchAll(referenceLinkTarget)) add(match[1], true, false);
+  for (const match of text.matchAll(pathMention)) add(match[1], false, false);
+  if (options.ruleset === "v2") {
+    for (const match of text.replace(fencedCodeBlock, "").matchAll(bareDocumentMention)) {
+      if (!isManifestName(match[1])) add(match[1], true, true);
+    }
+  }
   return named;
 }
 
@@ -189,6 +226,7 @@ export async function readBoundedBytes(response: Response, maxBytes: number): Pr
  */
 export async function fetchSkillFromUrl(reference: string, options: FetchSkillOptions = {}): Promise<FetchedSkill> {
   const fetcher = options.fetch ?? fetch.bind(globalThis);
+  const ruleset = options.ruleset ?? "v1";
   const manifest = skillManifestAddress(skillLinkUrl(reference));
   const manifestResponse = await fetcher(manifest.url.href);
   if (manifestResponse.status === 404) throw new Error("skill_manifest_missing");
@@ -202,12 +240,19 @@ export async function fetchSkillFromUrl(reference: string, options: FetchSkillOp
   }
 
   const files: SkillInputFile[] = [{ path: "SKILL.md", bytes: manifestBytes }];
-  const missingFiles: { path: string; reason: "not_found" | "unavailable" | "unsafe_path" | "too_large" }[] = [];
+  const missingFiles: SkillMissingFile[] = [];
   const seen = new Set<string>(["SKILL.md"]);
-  const queue = namedSkillFiles(manifestText, "");
+  // Paths some text named by a link or a path with a folder, not only as a bare name.
+  const namedPlainly = new Set<string>();
+  const queue: NamedSkillFile[] = [];
+  const enqueue = (found: readonly NamedSkillFile[]): void => {
+    for (const file of found) if (!file.bareName) namedPlainly.add(file.path);
+    queue.push(...found);
+  };
+  enqueue(namedSkillFileRefs(manifestText, "", { ruleset }));
   let totalBytes = manifestBytes.byteLength;
   while (queue.length > 0) {
-    const path = queue.shift() ?? "";
+    const path = queue.shift()?.path ?? "";
     if (seen.has(path)) continue;
     seen.add(path);
     if (files.length + missingFiles.length >= bundleMaxFiles) throw new Error("skill_source_too_large");
@@ -243,7 +288,7 @@ export async function fetchSkillFromUrl(reference: string, options: FetchSkillOp
     totalBytes += bytes.byteLength;
     files.push({ path, bytes });
     const text = new TextDecoder("utf-8", { fatal: false }).decode(bytes);
-    if (/\.(?:md|markdown|txt)$/iu.test(path)) queue.push(...namedSkillFiles(text, parentFolder(path)));
+    if (/\.(?:md|markdown|txt)$/iu.test(path)) enqueue(namedSkillFileRefs(text, parentFolder(path), { ruleset }));
   }
   files.sort((left, right) => (left.path < right.path ? -1 : left.path > right.path ? 1 : 0));
   return {
@@ -253,6 +298,12 @@ export async function fetchSkillFromUrl(reference: string, options: FetchSkillOp
       catalog: manifest.sourceType === "github" ? "github" : "web",
       catalog_review: "not_checked",
     },
-    missingFiles,
+    // v2: a file no text named plainly, that the host did not find, was named only as a bare word.
+    missingFiles:
+      ruleset === "v2"
+        ? missingFiles.map((file) =>
+            file.reason === "not_found" && !namedPlainly.has(file.path) ? { ...file, bareName: true as const } : file,
+          )
+        : missingFiles,
   };
 }

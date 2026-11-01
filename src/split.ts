@@ -13,7 +13,7 @@ import type {
   SkillFilesForCheck,
   SkillManifestEntry,
   SkillSafetyState,
-  SkillSource,
+  SkillSafetyStateSource,
 } from "./types.js";
 
 /** How much of the Skill's file text one request carries. */
@@ -56,7 +56,7 @@ function roleOfPath(path: string): SkillManifestEntry["role"] {
 export function skillSafetyStates(input: {
   skill: ParsedSkill;
   personRequest: string;
-  source: SkillSource;
+  source: SkillSafetyStateSource;
   files: SkillFilesForCheck;
 }): SkillSafetyState[] {
   const { skill, files: checked } = input;

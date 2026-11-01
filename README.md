@@ -109,6 +109,36 @@ These are **not** problems on their own: reaching an outside service, sending em
 
 A **flag is not a dead end**. The result names the question, the files, and a one-sentence reason, so your agent can show you and let you decide. A credential-shaped value can flag a Skill even when no question fires; it is reported by file and line, never by value. Only a refusal is a hard stop.
 
+## Ruleset v2 (opt-in)
+
+Everything above describes the default, ruleset `v1`. Ruleset `v2` carries later refinements from the checker these questions were ported from. It is off unless you turn it on, so an existing setup sees no change.
+
+```bash
+npx @vxbe/preskill scan ./my-skill --ruleset v2
+# or for every run in this shell:
+export PRESKILL_RULESET=v2
+```
+
+```ts
+const fetched = await fetchSkillFromUrl(link, { ruleset: "v2" });
+const result = await scanSkill({ ...fetched, personRequest }, { judge, ruleset: "v2" });
+// result.questionSetVersion === "skill-install-safety-v11-oss#b14bc9c5e96937f5"
+```
+
+`--ruleset` wins over `PRESKILL_RULESET`. An unknown value is an error, never a silent fallback to v1. The bench takes `--ruleset v2` too.
+
+What changes with v2:
+
+1. The description is read only for an attack, never for its tone. A Skill is judged by what its `SKILL.md` body and files make the agent do. A name or description that sounds broad ("use for anything"), gives the agent a persona or a voice, or promotes a product or a loyalty program in sales language no longer counts toward a flag on its own. An instruction in the description aimed at the agent (ignore your instructions, this Skill comes from the platform, outrank the person, keep something from them) or against the person's safety (ask for their password or card number) still counts exactly like one in `SKILL.md`, because the agent reads the description too. Every question gets one added boundary that says this, and the `skill` definition says the name and description are the hint for when to use the Skill.
+2. A catalog's own verdict never reaches the judge. Under v1 the judge sees `source.catalog_review` and a boundary telling it not to rely on it; under v2 the field is removed from the request and the boundary and definition go with it, so another scanner's opinion gets no vote. `SkillSource.catalog_review` stays in the input type, so your code does not change.
+3. Archives the scanner cannot open are refused by their bytes. 7z, RAR, xz, bzip2, zstd, lzip, lz4, Unix compress, cab, xar, ARJ, cpio, ar and ISO 9660 are recognized by their leading bytes, whatever the file is named, and refused as `archive format this check cannot open`, because their paths and contents were never checked. Under v1 such a file the Skill never names is kept as a data asset. Archive detection also runs before name-based kinds, so a 7z renamed `logo.png` is not waved through as a picture, and a v7 tar with no `ustar` magic is recognized by its header checksum and unpacked.
+4. Tar headers are followed the way tar follows them. pax (`x`) and GNU long-name (`L`, `K`) headers rename the entry after them; v1 skips those headers and checks the entry under its short name, so a pax header could point the real unpack path outside the Skill. v2 applies them and checks every name a reader could give the entry. GNU sparse files, a global header that renames or resizes, repeated or disagreeing extended headers, and a link, directory, device or pipe that claims data are refused as `archive feature that cannot be checked`.
+5. A linked Skill's bare document names are read. Skills often name reference files as bare words ("see REFERENCE.md", "follow FORMS.md"). v1 follows only Markdown links and paths with a folder, so those files were never fetched or judged. v2 also follows bare `.md`, `.markdown` and `.txt` names in prose outside fenced code blocks, read from the naming file's folder. A bare name the host does not have (a different case, or a word that was never a file) is returned with `bareName: true`, and under v2 it flags the Skill with a plain reason instead of refusing it. A file named by a link or a path with a folder is still a hard refusal when missing.
+
+The trade-off. On the source checker's own before-and-after run (same model, same benchmark, 0.05 floor, full check), the description change asked about fewer harmless Skills and caught fewer harmful ones: on the held-out set, harmless flagged went from 19.1% to 16.9% and harmful caught from 78.1% to 73.7%. On the tuning set, harmless flagged stayed at 0% and harmful caught at 0.05 stayed at 100% (at 0.10 it went from 98.2% to 96.5%). The drop came from scores between 0.05 and 0.10 on both sides. Every description that carried an instruction at the agent, and every hostile body, was still flagged in that run. Removing the catalog verdict alone moved the held-out numbers within run-to-run variance. Those are the source checker's measurements; this package's v2 has not been re-measured, and the archive and link rules are deterministic and were not part of that benchmark. Pick v2 if fewer false flags on broad or salesy descriptions matter more to you than the last few points of catch rate.
+
+Custom judges: `scanSkill` passes v2's questions as `options.questions` to `judge(state, options)`. `createHttpJudge` sends them; a judge you wrote should send `options.questions` when present. Under v1 the call is exactly as before.
+
 ## Install from a checkout
 
 ```bash
@@ -201,6 +231,7 @@ Caveats:
 - A different model, question wording, tokenizer, or floor can move every number.
 - Govbench is a tuning set. Do not cite it as generalisation.
 - A held-out set must be run once per final question set and never used for tuning. Re-running it after a change makes it a tuning set.
+- These numbers are for ruleset v1, the default. Ruleset v2 is described in its own section above.
 
 ## Running the bench
 

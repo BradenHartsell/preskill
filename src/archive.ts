@@ -9,6 +9,12 @@
 
 import { documentMimeTypes, zipExtensions } from "./mime.js";
 import { extensionOf } from "./text.js";
+import type { Ruleset } from "./types.js";
+
+/** How an archive is read. Ruleset v2 adds the stricter rules marked "v2" below. */
+export interface ArchiveReadOptions {
+  readonly ruleset?: Ruleset;
+}
 
 export const archiveLimits = {
   maxExpandedBytes: 16 * 1024 * 1024,
@@ -19,7 +25,11 @@ export const archiveLimits = {
 export type ArchiveRefusalReason =
   | "damaged or password-protected"
   | "archive too large or too deep"
-  | "unsafe path";
+  | "unsafe path"
+  /** v2: an archive or compression format this reader does not unpack. */
+  | "archive format this check cannot open"
+  /** v2: a tar header that renames or reshapes entries in a way this reader cannot follow. */
+  | "archive feature that cannot be checked";
 
 export class ArchiveError extends Error {
   constructor(readonly reason: ArchiveRefusalReason) {
@@ -476,7 +486,8 @@ function isTar(bytes: Uint8Array): boolean {
   return bytes.length >= 512 && new TextDecoder("latin1").decode(bytes.subarray(257, 262)) === "ustar";
 }
 
-export function untar(bytes: Uint8Array, budget: ArchiveBudget): ArchiveEntry[] {
+export function untar(bytes: Uint8Array, budget: ArchiveBudget, options: ArchiveReadOptions = {}): ArchiveEntry[] {
+  if (options.ruleset === "v2") return untarV2(bytes, budget);
   const entries: ArchiveEntry[] = [];
   let offset = 0;
   while (offset + 512 <= bytes.length) {
@@ -513,11 +524,213 @@ export function untar(bytes: Uint8Array, budget: ArchiveBudget): ArchiveEntry[] 
 }
 
 // ---------------------------------------------------------------------------
+// tar, ruleset v2
+// ---------------------------------------------------------------------------
+
+/**
+ * v2: whether a tar header's stored checksum matches its bytes. Some old tars
+ * summed signed bytes, so either sum is accepted.
+ */
+function tarHeaderChecksumValid(bytes: Uint8Array, offset: number): boolean {
+  const expected = Number.parseInt(field(bytes, offset + 148, 8).trim(), 8);
+  if (!Number.isSafeInteger(expected)) return false;
+  let unsigned = 0;
+  let signed = 0;
+  for (let index = 0; index < 512; index += 1) {
+    const byte = index >= 148 && index < 156 ? 0x20 : (bytes[offset + index] ?? 0);
+    unsigned += byte;
+    signed += byte > 127 ? byte - 256 : byte;
+  }
+  return expected === unsigned || expected === signed;
+}
+
+/** v2: a tar by its first header, the `ustar` magic or (a v7 tar, which has none) a valid checksum. */
+function isTarV2(bytes: Uint8Array): boolean {
+  if (isTar(bytes)) return true;
+  return bytes.length >= 512 && !bytes.subarray(0, 512).every((byte) => byte === 0) && tarHeaderChecksumValid(bytes, 0);
+}
+
+/** A name that is the archive's own root (`.`, `./`), not absolute and with no `..`. */
+function isRootName(name: string): boolean {
+  const slashed = name.replaceAll("\\", "/");
+  return !slashed.startsWith("/") && slashed.split("/").every((part) => part === "" || part === ".");
+}
+
+/** The records of a pax extended header (`<length> <key>=<value>\n`), or null when one is malformed. */
+function paxRecords(data: Uint8Array): Map<string, string> | null {
+  const records = new Map<string, string>();
+  const decoder = new TextDecoder();
+  let offset = 0;
+  while (offset < data.length && data[offset] !== 0) {
+    let space = offset;
+    while (space < data.length && data[space] !== 0x20) space += 1;
+    const digits = decoder.decode(data.subarray(offset, space));
+    const length = /^\d{1,9}$/u.test(digits) ? Number(digits) : Number.NaN;
+    if (
+      !Number.isSafeInteger(length) ||
+      length <= space - offset + 1 ||
+      offset + length > data.length ||
+      data[offset + length - 1] !== 0x0a
+    ) {
+      return null;
+    }
+    const record = decoder.decode(data.subarray(space + 1, offset + length - 1));
+    const equals = record.indexOf("=");
+    if (equals <= 0) return null;
+    records.set(record.slice(0, equals), record.slice(equals + 1));
+    offset += length;
+  }
+  return records;
+}
+
+/**
+ * v2: walks every tar header, applying pax (`x`/`X`: `path`, `size`) and GNU
+ * long-name (`L`, `K`) headers to the entry they precede, as real tar does,
+ * so a header that renames an entry is checked under the name it unpacks to.
+ * Every name a reader could give an entry must be a safe path. Anything this
+ * walk would follow differently from tar is refused rather than guessed: two
+ * extended headers of one kind in a row, a pax name and a long name that
+ * disagree, a global pax header that renames or resizes, a link, directory,
+ * device or pipe that claims data, and GNU sparse files. Directories, devices
+ * and pipes hold no content; links are refused as in v1; any other type
+ * unpacks as a regular file, so it is judged as one.
+ */
+function untarV2(bytes: Uint8Array, budget: ArchiveBudget): ArchiveEntry[] {
+  const unchecked = (): ArchiveError => new ArchiveError("archive feature that cannot be checked");
+  const damaged = (): ArchiveError => new ArchiveError("damaged or password-protected");
+  const cString = (data: Uint8Array): string => new TextDecoder().decode(data).replace(/\0.*$/su, "");
+  const entries: ArchiveEntry[] = [];
+  let pax: Map<string, string> | undefined;
+  let longName: string | undefined;
+  let longLink: string | undefined;
+  let offset = 0;
+  while (offset + 512 <= bytes.length) {
+    if (bytes.subarray(offset, offset + 512).every((byte) => byte === 0)) break;
+    if (!tarHeaderChecksumValid(bytes, offset)) throw damaged();
+    const sizeField = field(bytes, offset + 124, 12).trim();
+    if (!/^[0-7]*$/u.test(sizeField)) throw damaged();
+    const headerSize = Number.parseInt(sizeField || "0", 8);
+    const type = String.fromCharCode(bytes[offset + 156] ?? 0);
+    if ("xXgLK".includes(type)) {
+      if (offset + 512 + headerSize > bytes.length) throw damaged();
+      const data = bytes.subarray(offset + 512, offset + 512 + headerSize);
+      if (type === "x" || type === "X" || type === "g") {
+        const records = paxRecords(data);
+        if (!records) throw damaged();
+        if ([...records.keys()].some((key) => key.startsWith("GNU.sparse."))) throw unchecked();
+        if (type === "g" && (records.has("path") || records.has("linkpath") || records.has("size"))) throw unchecked();
+        if (type !== "g") {
+          if (pax) throw unchecked();
+          pax = records;
+        }
+      } else if (type === "L") {
+        if (longName !== undefined) throw unchecked();
+        longName = cString(data);
+      } else {
+        if (longLink !== undefined) throw unchecked();
+        longLink = cString(data);
+      }
+      offset += 512 + Math.ceil(headerSize / 512) * 512;
+      continue;
+    }
+    if (type === "S") throw unchecked();
+    const paxSize = pax?.get("size");
+    if (paxSize !== undefined && !/^\d{1,15}$/u.test(paxSize)) throw damaged();
+    const size = paxSize === undefined ? headerSize : Number(paxSize);
+    if (!Number.isSafeInteger(size) || offset + 512 + size > bytes.length) throw damaged();
+    // Some readers skip no data after a link, directory, device or pipe whatever
+    // its size says, others skip by size: a size there would hide headers from one of them.
+    if ("123456".includes(type) && size > 0) throw unchecked();
+    const prefix = field(bytes, offset + 345, 155);
+    const rawName = field(bytes, offset, 100);
+    const headerNames = prefix ? [`${prefix}/${rawName}`, rawName] : [rawName];
+    const extendedNames = [pax?.get("path"), longName].filter((name): name is string => name !== undefined);
+    const extendedTargets = [pax?.get("linkpath"), longLink].filter((target): target is string => target !== undefined);
+    const safeExtended = extendedNames.map(safeEntryPath);
+    if (new Set(safeExtended).size > 1 || new Set(extendedTargets).size > 1) throw unchecked();
+    // Every name some reader would give this entry must stay inside the Skill.
+    // A directory may be the archive's own root (`./`), which unpacks nowhere new.
+    const paths = [...safeExtended, ...headerNames.map(safeEntryPath)];
+    const isDirectory = type === "5";
+    const names = [...extendedNames, ...headerNames];
+    if (paths.some((path, index) => path === null && !(isDirectory && isRootName(names[index] ?? "")))) {
+      throw new ArchiveError("unsafe path");
+    }
+    const path = paths[0];
+    pax = undefined;
+    longName = undefined;
+    longLink = undefined;
+    const dataStart = offset + 512;
+    offset += 512 + Math.ceil(size / 512) * 512;
+    if (isDirectory || type === "3" || type === "4" || type === "6") continue;
+    if (path === null || path === undefined) throw new ArchiveError("unsafe path");
+    if (type === "1" || type === "2") {
+      claim(budget, 0);
+      entries.push({ path, bytes: new Uint8Array(), symlink: true });
+      continue;
+    }
+    claim(budget, size);
+    entries.push({ path, bytes: bytes.slice(dataStart, dataStart + size) });
+  }
+  return entries;
+}
+
+// ---------------------------------------------------------------------------
+// formats this reader does not open, ruleset v2
+// ---------------------------------------------------------------------------
+
+/** Leading bytes of archive and compression formats this reader does not unpack (and the ISO 9660 volume marker). */
+const unopenedArchiveMagic: readonly { readonly at: number; readonly magic: readonly number[] }[] = [
+  { at: 0, magic: [0x37, 0x7a, 0xbc, 0xaf, 0x27, 0x1c] }, // 7z
+  { at: 0, magic: [0x52, 0x61, 0x72, 0x21, 0x1a, 0x07] }, // RAR 4 and 5
+  { at: 0, magic: [0xfd, 0x37, 0x7a, 0x58, 0x5a, 0x00] }, // xz
+  { at: 0, magic: [0x28, 0xb5, 0x2f, 0xfd] }, // zstd
+  { at: 0, magic: [0x4c, 0x5a, 0x49, 0x50] }, // lzip
+  { at: 0, magic: [0x04, 0x22, 0x4d, 0x18] }, // lz4 frame
+  { at: 0, magic: [0x1f, 0x9d] }, // Unix compress (.Z)
+  { at: 0, magic: [0x4d, 0x53, 0x43, 0x46, 0, 0, 0, 0] }, // Microsoft cabinet
+  { at: 0, magic: [0x78, 0x61, 0x72, 0x21] }, // xar (macOS .pkg)
+  { at: 0, magic: [0x60, 0xea] }, // ARJ
+  { at: 0, magic: [0xc7, 0x71] }, // cpio, binary, little-endian
+  { at: 0, magic: [0x71, 0xc7] }, // cpio, binary, big-endian
+  { at: 0, magic: [0x30, 0x37, 0x30, 0x37, 0x30] }, // cpio, ASCII ("07070")
+  { at: 0, magic: [0x21, 0x3c, 0x61, 0x72, 0x63, 0x68, 0x3e, 0x0a] }, // ar ("!<arch>"), as in .deb
+  { at: 32769, magic: [0x43, 0x44, 0x30, 0x30, 0x31] }, // ISO 9660 ("CD001")
+];
+
+/** v2: whether these bytes are an archive or compressed stream in a format this reader cannot open. */
+export function unopenedArchiveFormat(bytes: Uint8Array): boolean {
+  if (unopenedArchiveMagic.some(({ at, magic }) => magic.every((byte, index) => bytes[at + index] === byte))) return true;
+  // bzip2: "BZh", a block size digit, then a block or end-of-stream marker, so text that starts "BZh" never matches.
+  const bzipBlock = [0x31, 0x41, 0x59, 0x26, 0x53, 0x59];
+  const bzipEnd = [0x17, 0x72, 0x45, 0x38, 0x50, 0x90];
+  const level = bytes[3] ?? 0;
+  return (
+    startsWith(bytes, [0x42, 0x5a, 0x68]) &&
+    level >= 0x31 &&
+    level <= 0x39 &&
+    [bzipBlock, bzipEnd].some((marker) => marker.every((byte, index) => bytes[4 + index] === byte))
+  );
+}
+
+// ---------------------------------------------------------------------------
 // entry point
 // ---------------------------------------------------------------------------
 
-/** Entries when `path` is an archive, null when it is not. */
-export function archiveEntries(path: string, bytes: Uint8Array, budget: ArchiveBudget): ArchiveEntry[] | null {
+/**
+ * Entries when `path` is an archive, null when it is not. Under ruleset v2 an
+ * archive or compression format this reader cannot open is refused by its
+ * bytes, whatever its name, and a v7 tar (no `ustar` magic) is recognized by
+ * its header checksum.
+ */
+export function archiveEntries(
+  path: string,
+  bytes: Uint8Array,
+  budget: ArchiveBudget,
+  options: ArchiveReadOptions = {},
+): ArchiveEntry[] | null {
+  const v2 = options.ruleset === "v2";
+  const looksLikeTar = v2 ? isTarV2 : isTar;
   const extension = extensionOf(path);
   const lower = path.toLowerCase();
   if (zipExtensions.has(extension) || startsWith(bytes, [0x50, 0x4b, 0x03, 0x04])) {
@@ -528,12 +741,14 @@ export function archiveEntries(path: string, bytes: Uint8Array, budget: ArchiveB
     const remaining = archiveLimits.maxExpandedBytes - budget.bytes;
     const inner = gunzip(bytes, remaining);
     const innerName = lower.endsWith(".gz") ? path.slice(0, -3) : `${path}.tar`;
-    if (innerName.toLowerCase().endsWith(".tar") || extension === "tgz" || isTar(inner)) {
-      return untar(inner, budget);
+    if (innerName.toLowerCase().endsWith(".tar") || extension === "tgz" || looksLikeTar(inner)) {
+      return untar(inner, budget, options);
     }
+    if (v2 && unopenedArchiveFormat(inner)) throw new ArchiveError("archive format this check cannot open");
     claim(budget, inner.byteLength);
     return [{ path: innerName.split("/").at(-1) ?? "file", bytes: inner }];
   }
-  if (extension === "tar" || isTar(bytes)) return untar(bytes, budget);
+  if (extension === "tar" || looksLikeTar(bytes)) return untar(bytes, budget, options);
+  if (v2 && unopenedArchiveFormat(bytes)) throw new ArchiveError("archive format this check cannot open");
   return null;
 }

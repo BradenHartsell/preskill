@@ -22,4 +22,6 @@ Use the exit code and the JSON:
 - `2`, verdict `refused`: show the refusal reasons and stop.
 - Any other error: stop and show the error.
 
+If the user has asked for ruleset v2, add `--ruleset v2` (or they may have set `PRESKILL_RULESET=v2`). Otherwise use the default.
+
 A missing key, a network error, or a timeout is not a pass. Do not install a Skill the scanner could not check.

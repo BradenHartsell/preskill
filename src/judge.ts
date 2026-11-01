@@ -30,8 +30,9 @@
  * The request and response shapes below follow those docs.
  */
 
-import { skillSafetyQuestions } from "./questions.js";
+import { skillSafetyQuestions, type NoulQuestion } from "./questions.js";
 import type { QuestionId, SkillSafetyState } from "./types.js";
+import { questionIds } from "./types.js";
 
 export type JudgeProvider = "perplexity" | "openrouter" | "custom";
 
@@ -52,6 +53,12 @@ export interface JudgeResult {
 export interface JudgeOptions {
   readonly signal?: AbortSignal;
   readonly timeoutMs?: number;
+  /**
+   * The questions to ask. `scanSkill` passes the selected ruleset's questions;
+   * when absent, a judge asks the default (v1) questions. A custom judge that
+   * builds its own request should send these.
+   */
+  readonly questions?: Readonly<Record<QuestionId, NoulQuestion>>;
 }
 
 export interface Judge {
@@ -108,12 +115,17 @@ export interface HttpJudgeOptions {
 interface RequestBody {
   model: string;
   state: SkillSafetyState;
-  questions: typeof skillSafetyQuestions;
+  questions: Readonly<Record<QuestionId, NoulQuestion>>;
   provider?: { data_collection: "deny" };
 }
 
-function requestBody(provider: "perplexity" | "openrouter", model: string, state: SkillSafetyState): RequestBody {
-  const body: RequestBody = { model, state, questions: skillSafetyQuestions };
+function requestBody(
+  provider: "perplexity" | "openrouter",
+  model: string,
+  state: SkillSafetyState,
+  questions: Readonly<Record<QuestionId, NoulQuestion>>,
+): RequestBody {
+  const body: RequestBody = { model, state, questions };
   // OpenRouter documents this preference; Perplexity's Decisions API rejects
   // unknown top-level fields, so it is only sent to OpenRouter.
   if (provider === "openrouter") body.provider = { data_collection: "deny" };
@@ -127,7 +139,8 @@ function parseAnswers(body: unknown): { model: string; answers: Record<QuestionI
   const rawAnswers = record.answers;
   if (!rawAnswers || typeof rawAnswers !== "object") throw new JudgeError("response_invalid");
   const answerRecord = rawAnswers as Record<string, unknown>;
-  const ids = Object.keys(skillSafetyQuestions) as QuestionId[];
+  // Every ruleset asks the same seven ids.
+  const ids: readonly QuestionId[] = questionIds;
   if (Object.keys(answerRecord).length !== ids.length || !ids.every((id) => Object.hasOwn(answerRecord, id))) {
     throw new JudgeError("response_invalid");
   }
@@ -204,7 +217,7 @@ export function createHttpJudge(options: HttpJudgeOptions): Judge {
             "content-type": "application/json",
             accept: "application/json",
           },
-          body: JSON.stringify(requestBody(provider, model, state)),
+          body: JSON.stringify(requestBody(provider, model, state, judgeOptions.questions ?? skillSafetyQuestions)),
           signal: controller.signal,
         });
       } catch (error) {
