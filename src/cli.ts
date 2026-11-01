@@ -12,7 +12,8 @@ import { fetchSkillFromUrl } from "./fetch.js";
 import { createHttpJudge } from "./judge.js";
 import { readSkillTarget } from "./node.js";
 import { scanSkill } from "./scanner.js";
-import type { SkillInputFile, SkillScanResult, SkillSource } from "./types.js";
+import type { Ruleset, SkillInputFile, SkillMissingFile, SkillScanResult, SkillSource } from "./types.js";
+import { rulesets } from "./types.js";
 
 interface Args {
   target: string;
@@ -25,7 +26,13 @@ interface Args {
   timeoutMs?: number;
   json: boolean;
   keyEnv?: string;
+  ruleset?: Ruleset;
   help: boolean;
+}
+
+function parseRuleset(value: string | undefined): Ruleset {
+  if (value === undefined || !(rulesets as readonly string[]).includes(value)) throw new Error("ruleset_must_be_v1_or_v2");
+  return value as Ruleset;
 }
 
 function parseArgs(argv: readonly string[]): Args {
@@ -78,6 +85,9 @@ function parseArgs(argv: readonly string[]): Args {
       case "--key-env":
         args.keyEnv = next();
         break;
+      case "--ruleset":
+        args.ruleset = parseRuleset(next());
+        break;
       case "--json":
         args.json = true;
         break;
@@ -125,6 +135,8 @@ function helpText(): string {
     "  --concurrency <n>                Requests in flight per Skill. Default 6.",
     "  --timeout-ms <n>                 One request's deadline. Default 15000.",
     "  --key-env <NAME>                 Read the key from this variable; add --provider if needed.",
+    "  --ruleset v1|v2                  Which rules to apply. Default v1 (the measured set).",
+    "                                   v2 is opt-in: see the README.",
     "  --json                           Print the typed result only.",
     "  --help                           Show this text.",
     "",
@@ -132,6 +144,7 @@ function helpText(): string {
     "  Set PERPLEXITY_API_KEY or OPENROUTER_API_KEY; the provider is inferred.",
     "  PRESKILL_PROVIDER overrides the inferred provider.",
     "  PRESKILL_API_KEY overrides the provider key.",
+    "  PRESKILL_RULESET=v2 opts in to ruleset v2; --ruleset wins over it.",
     "",
     "Exit codes: 0 safe, 1 flagged, 2 refused or error.",
   ].join("\n");
@@ -172,7 +185,14 @@ function resolveProvider(args: Args): { provider: "perplexity" | "openrouter"; a
   return { provider, apiKey };
 }
 
-function human(result: SkillScanResult, target: string): string {
+/** The ruleset: `--ruleset`, then `PRESKILL_RULESET`, then v1. An unknown value is an error, never a silent default. */
+function resolveRuleset(args: Args): Ruleset {
+  if (args.ruleset) return args.ruleset;
+  const fromEnv = process.env.PRESKILL_RULESET?.trim();
+  return fromEnv ? parseRuleset(fromEnv) : "v1";
+}
+
+function human(result: SkillScanResult, target: string, ruleset: Ruleset): string {
   const lines: string[] = [`preskill: ${target}`, `Verdict: ${result.verdict}`];
   if (result.flaggedQuestions.length > 0) {
     lines.push("", "Flagged questions:");
@@ -193,6 +213,7 @@ function human(result: SkillScanResult, target: string): string {
   }
   if (result.verdict === "safe") lines.push("", "No question reached the floor.");
   lines.push("", `Checked with ${result.model}; ${result.requestCount} request(s).`);
+  if (ruleset !== "v1") lines.push(`Ruleset ${ruleset} (${result.questionSetVersion}).`);
   return lines.join("\n");
 }
 
@@ -202,12 +223,13 @@ async function main(): Promise<number> {
     process.stdout.write(`${helpText()}\n`);
     return 0;
   }
+  const ruleset = resolveRuleset(args);
   const { provider, apiKey } = resolveProvider(args);
   let files: readonly SkillInputFile[];
   let source: SkillSource;
-  let missingFiles: readonly { path: string; reason: "not_found" | "unavailable" | "unsafe_path" | "too_large" }[] = [];
+  let missingFiles: readonly SkillMissingFile[] = [];
   if (/^https:\/\//iu.test(args.target)) {
-    const fetched = await fetchSkillFromUrl(args.target);
+    const fetched = await fetchSkillFromUrl(args.target, ruleset === "v1" ? {} : { ruleset });
     files = fetched.files;
     source = fetched.source;
     missingFiles = fetched.missingFiles;
@@ -230,12 +252,13 @@ async function main(): Promise<number> {
       ...(args.concurrency !== undefined ? { concurrency: args.concurrency } : {}),
       ...(args.timeoutMs !== undefined ? { timeoutMs: args.timeoutMs } : {}),
       ...(args.personRequest ? { personRequest: args.personRequest } : {}),
+      ...(ruleset === "v1" ? {} : { ruleset }),
     },
   );
   if (args.json) {
     process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
   } else {
-    process.stdout.write(`${human(result, args.target)}\n`);
+    process.stdout.write(`${human(result, args.target, ruleset)}\n`);
   }
   return result.verdict === "safe" ? 0 : result.verdict === "flagged" ? 1 : 2;
 }
