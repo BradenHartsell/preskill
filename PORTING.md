@@ -106,7 +106,8 @@ code is shared):
   and every name a reader could give the entry must be a safe path; features
   the walk cannot follow are refused;
 - bare document names in prose outside fenced code are followed when reading
-  a linked Skill.
+  a linked Skill. A name that appears only inside a fence is fetched when the
+  host has the file, and a miss is not a finding.
 
 Two deliberate differences from the source, both because a missing named file
 is a hard refusal here: a bare document name the host does not have flags the

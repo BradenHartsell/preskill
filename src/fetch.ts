@@ -111,8 +111,8 @@ const pathMention = /(?<![\w./@:-])((?:\.\/)?[A-Za-z0-9_][\w.-]*(?:\/[\w.-]+)+)(
  * Ruleset v2: a bare document name in prose, the usual way a Skill names a
  * reference file ("see REFERENCE.md", "read FORMS.md"). Only document
  * extensions: Skills name example files (`input.pdf`, `package.json`) that
- * are not their own, and a fenced code block is example code, so fenced
- * blocks are skipped.
+ * are not their own. A fenced block is example code: a name that appears
+ * only there is fetched when the host has the file, and a miss is not a finding.
  */
 const bareDocumentMention = /(?<![\w./@:\\-])([A-Za-z0-9_][\w.-]*\.(?:md|markdown|txt))(?!\.?[\w/-])/giu;
 const fencedCodeBlock = /^ {0,3}(`{3,}|~{3,})[^\n]*\n[\s\S]*?^ {0,3}\1[^\n]*$/gmu;
@@ -121,6 +121,11 @@ const fencedCodeBlock = /^ {0,3}(`{3,}|~{3,})[^\n]*\n[\s\S]*?^ {0,3}\1[^\n]*$/gm
 export interface NamedSkillFile {
   readonly path: string;
   readonly bareName: boolean;
+  /**
+   * Ruleset v2: the path was named only inside a fenced code block. The fetch
+   * reads it when the host has it. A miss is not a finding.
+   */
+  readonly fencedExample?: true;
 }
 
 /**
@@ -130,9 +135,13 @@ export interface NamedSkillFile {
  * scheme, absolute paths, and anything climbing out of the Skill are not its
  * files. Under ruleset v2, bare document names in prose outside fenced code
  * (`REFERENCE.md`) are also named, read like a link from the naming file's folder.
+ * A name that appears only inside a fence is not returned here: it is an example
+ * unless the host actually has the file, which `fetchSkillFromUrl` checks.
  */
 export function namedSkillFiles(text: string, fromFolder: string, options: { readonly ruleset?: Ruleset } = {}): string[] {
-  return namedSkillFileRefs(text, fromFolder, options).map((file) => file.path);
+  return namedSkillFileRefs(text, fromFolder, options)
+    .filter((file) => file.fencedExample !== true)
+    .map((file) => file.path);
 }
 
 /** `namedSkillFiles`, with whether each path was named only as a bare document name. */
@@ -150,8 +159,16 @@ export function namedSkillFileRefs(
   for (const match of text.matchAll(referenceLinkTarget)) add(match[1], true, false);
   for (const match of text.matchAll(pathMention)) add(match[1], false, false);
   if (options.ruleset === "v2") {
-    for (const match of text.replace(fencedCodeBlock, "").matchAll(bareDocumentMention)) {
+    const prose = text.replace(fencedCodeBlock, "");
+    for (const match of prose.matchAll(bareDocumentMention)) {
       if (!isManifestName(match[1])) add(match[1], true, true);
+    }
+    const fenced = [...text.matchAll(fencedCodeBlock)].map((match) => match[0]).join("\n");
+    for (const match of fenced.matchAll(bareDocumentMention)) {
+      if (isManifestName(match[1])) continue;
+      const path = skillRelativePath(match[1] ?? "", fromFolder, true);
+      if (!path || named.some((file) => file.path === path)) continue;
+      named.push({ path, bareName: false, fencedExample: true });
     }
   }
   return named;
@@ -246,16 +263,24 @@ export async function fetchSkillFromUrl(reference: string, options: FetchSkillOp
   const namedPlainly = new Set<string>();
   const queue: NamedSkillFile[] = [];
   const enqueue = (found: readonly NamedSkillFile[]): void => {
-    for (const file of found) if (!file.bareName) namedPlainly.add(file.path);
+    for (const file of found) {
+      if (file.fencedExample === true) continue;
+      if (!file.bareName) namedPlainly.add(file.path);
+    }
     queue.push(...found);
   };
   enqueue(namedSkillFileRefs(manifestText, "", { ruleset }));
   let totalBytes = manifestBytes.byteLength;
+  // Every name we attempt counts, including a fenced name the host does not have.
+  // Those misses are not findings, so they are absent from both lists above.
+  let attempts = files.length;
   while (queue.length > 0) {
-    const path = queue.shift()?.path ?? "";
+    const current = queue.shift();
+    const path = current?.path ?? "";
     if (seen.has(path)) continue;
     seen.add(path);
-    if (files.length + missingFiles.length >= bundleMaxFiles) throw new Error("skill_source_too_large");
+    if (attempts >= bundleMaxFiles) throw new Error("skill_source_too_large");
+    attempts += 1;
     if (!isSafeSkillPath(path)) {
       missingFiles.push({ path, reason: "unsafe_path" });
       continue;
@@ -268,6 +293,12 @@ export async function fetchSkillFromUrl(reference: string, options: FetchSkillOp
       continue;
     }
     if (response.status === 404) {
+      // A fenced name the host lacks is an example, not one of the Skill's files.
+      // Drop the seen mark so a later plain mention of the same path is still recorded.
+      if (current?.fencedExample === true && !namedPlainly.has(path)) {
+        seen.delete(path);
+        continue;
+      }
       missingFiles.push({ path, reason: "not_found" });
       continue;
     }

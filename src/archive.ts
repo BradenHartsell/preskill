@@ -7,7 +7,7 @@
  * archive is refused, never guessed at.
  */
 
-import { documentMimeTypes, zipExtensions } from "./mime.js";
+import { documentMimeTypes, zipDocumentExtensions, zipExtensions } from "./mime.js";
 import { extensionOf } from "./text.js";
 import type { Ruleset } from "./types.js";
 
@@ -734,14 +734,24 @@ export function archiveEntries(
   const extension = extensionOf(path);
   const lower = path.toLowerCase();
   if (zipExtensions.has(extension) || startsWith(bytes, [0x50, 0x4b, 0x03, 0x04])) {
-    if (documentMimeTypes[extension]) return null;
+    // Office documents are zips whose text the document reader owns. v1 also
+    // leaves any other document extension alone, so a zip named guide.pdf is
+    // not walked. v2 walks that zip; the office extensions stay with the reader.
+    const leaveForDocumentReader = v2 ? zipDocumentExtensions.has(extension) : Boolean(documentMimeTypes[extension]);
+    if (leaveForDocumentReader) return null;
     return unzip(bytes, budget);
   }
   if (lower.endsWith(".tar.gz") || extension === "tgz" || extension === "gz" || startsWith(bytes, [0x1f, 0x8b])) {
     const remaining = archiveLimits.maxExpandedBytes - budget.bytes;
     const inner = gunzip(bytes, remaining);
-    const innerName = lower.endsWith(".gz") ? path.slice(0, -3) : `${path}.tar`;
-    if (innerName.toLowerCase().endsWith(".tar") || extension === "tgz" || looksLikeTar(inner)) {
+    const innerName = lower.endsWith(".gz") ? path.slice(0, -3) : path;
+    const namedTar =
+      lower.endsWith(".tar.gz") || extension === "tgz" || innerName.toLowerCase().endsWith(".tar");
+    // v1 still treats a gzip whose name is not `.gz` as a tar. v2 does that only
+    // when the name or the inner bytes say tar, so a gzip of a 7z named notes.pdf
+    // is refused instead of accepted as an empty tar.
+    const assumeTar = namedTar || (v2 ? looksLikeTar(inner) : !lower.endsWith(".gz") || looksLikeTar(inner));
+    if (assumeTar) {
       return untar(inner, budget, options);
     }
     if (v2 && unopenedArchiveFormat(inner)) throw new ArchiveError("archive format this check cannot open");

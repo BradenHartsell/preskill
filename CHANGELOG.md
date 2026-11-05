@@ -19,11 +19,19 @@ result is the same as 0.1.0, and `questionSetVersion` is still
     it sounds.
   - A catalog's own verdict (`source.catalog_review`) is never sent to the judge.
   - Archive and compression formats the scanner cannot open (7z, RAR, xz,
-    bzip2, zstd and others) are refused by their bytes, whatever their name.
+    bzip2, zstd and others) are refused by their bytes, whatever their name,
+    including a document name and a document reader that would describe the
+    bytes. A zip renamed to `.pdf` is unpacked. A native program whose bytes
+    are also a valid tar is still refused.
   - tar pax and GNU long-name headers are applied and every resulting path is
     checked; tar features the scanner cannot follow are refused.
   - A linked Skill's bare document names (`REFERENCE.md`) are fetched and
     judged; one the host does not have flags the Skill instead of refusing it.
+    A name that appears only inside a fenced block is fetched when the host
+    has the file, and a miss is not a finding. Those misses count toward the
+    file cap.
+  - A document that is also a tar is judged as its entries and as what the
+    document reader says about the original bytes.
 - Exports: `Ruleset`, `rulesets`, `skillSafetyQuestionsV2`, `definitionsV2`,
   `descriptionBoundary`, `questionsForRuleset`, `questionSetNameV2`,
   `questionSetContentHashV2`, `questionSetVersionV2`, `questionSetVersionFor`,
