@@ -11,9 +11,13 @@ export {
   asSentence,
   capabilityContext,
   definitions,
+  definitionsV2,
+  descriptionBoundary,
   productContext,
   questionReasons,
+  questionsForRuleset,
   skillSafetyQuestions,
+  skillSafetyQuestionsV2,
   type NoulQuestion,
 } from "./questions.js";
 
@@ -36,6 +40,10 @@ export {
   questionSetId,
   questionSetName,
   questionSetVersion,
+  questionSetContentHashV2,
+  questionSetNameV2,
+  questionSetVersionV2,
+  questionSetVersionFor,
 } from "./version.js";
 
 export {
@@ -62,7 +70,9 @@ export {
   inflateRaw,
   safeEntryPath,
   untar,
+  unopenedArchiveFormat,
   unzip,
+  type ArchiveReadOptions,
   type ArchiveBudget,
   type ArchiveEntry,
   type ArchiveRefusalReason,
@@ -96,12 +106,14 @@ export {
   bundleMaxFiles,
   fetchSkillFromUrl,
   isSafeSkillPath,
+  namedSkillFileRefs,
   namedSkillFiles,
   readBoundedBytes,
   skillLinkUrl,
   skillManifestAddress,
   type FetchSkillOptions,
   type FetchedSkill,
+  type NamedSkillFile,
 } from "./fetch.js";
 
 export {

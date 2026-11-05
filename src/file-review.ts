@@ -47,6 +47,7 @@ import type {
   SkillFileRole,
   SkillFilesForCheck,
   SkillInputFile,
+  Ruleset,
 } from "./types.js";
 import { SkillReaderError } from "./types.js";
 
@@ -100,6 +101,10 @@ function refusal(path: string, code: SkillFileRefusal["code"]): SkillFileRefusal
         return `${path} is a file type this scanner cannot read, and the Skill uses it.`;
       case "symlink":
         return `${path} is a symbolic link, which cannot be judged.`;
+      case "archive format this check cannot open":
+        return `${path} is packed in an archive format this scanner cannot open, so where its files would unpack was never checked.`;
+      case "archive feature that cannot be checked":
+        return `${path} uses a packing feature that renames or reshapes its entries in a way this scanner cannot follow, so where its files would unpack was never checked.`;
     }
   })();
   return { path, code, reason };
@@ -175,7 +180,9 @@ export async function skillFilesForCheck(
   skill: ParsedSkill,
   inputFiles: readonly SkillInputFile[],
   reader?: SkillFileReader,
+  options: { readonly ruleset?: Ruleset } = {},
 ): Promise<SkillFilesForCheck> {
+  const ruleset = options.ruleset ?? "v1";
   const resources = inputFiles
     .filter((file) => file.path !== "SKILL.md")
     .sort((left, right) => left.path.localeCompare(right.path));
@@ -209,6 +216,39 @@ export async function skillFilesForCheck(
     }
   };
 
+  /**
+   * Unpacks and visits an archive's entries.
+   * `absent` when the bytes are not an archive, `refused` when they are an
+   * archive this check will not accept, `unpacked` when its entries were visited.
+   */
+  const visitArchive = async (
+    path: string,
+    bytes: Uint8Array,
+    depth: number,
+  ): Promise<"absent" | "refused" | "unpacked"> => {
+    let entries: ArchiveEntry[] | null;
+    try {
+      entries = archiveEntries(path, bytes, budget, { ruleset });
+      if (entries && depth >= archiveLimits.maxDepth) {
+        throw new ArchiveError("archive too large or too deep");
+      }
+    } catch (error) {
+      if (!(error instanceof ArchiveError)) throw error;
+      refusals.push(refusal(path, error.reason));
+      return "refused";
+    }
+    if (!entries) return "absent";
+    for (const entry of entries.sort((left, right) => left.path.localeCompare(right.path))) {
+      const entryPath = `${path}!/${entry.path}`;
+      if (entry.symlink) {
+        refusals.push(refusal(entryPath, "symlink"));
+        continue;
+      }
+      await visit(entryPath, entry.bytes, depth + 1, true, true);
+    }
+    return "unpacked";
+  };
+
   const visit = async (
     path: string,
     bytes: Uint8Array,
@@ -223,6 +263,26 @@ export async function skillFilesForCheck(
     if (text !== null && !documentMimeTypes[extension]) {
       files.push({ path, role, readAs: insideArchive ? "archive entry text" : "text", text });
       return;
+    }
+
+    // A tar's name starts at byte 0, so a checksum-valid tar can also be a
+    // native program. v2 refuses that from the outer bytes before unpacking.
+    // v1's own check stays where it was, after documents.
+    if (
+      ruleset === "v2" &&
+      (nativeProgramExtensions.has(extension) || nativeMagic.some((magic) => startsWith(bytes, magic)))
+    ) {
+      refusals.push(refusal(path, "compiled native program"));
+      return;
+    }
+
+    // v2 classifies archives by their bytes before a document, image, or
+    // data-asset name. A 7z named guide.pdf is the same refusal as logo.png.
+    // A document that unpacks (a pdf that is also a tar) is judged both ways:
+    // the entries, and what the document reader says about the original bytes.
+    if (ruleset === "v2") {
+      const opened = await visitArchive(path, bytes, depth);
+      if (opened === "refused" || (opened === "unpacked" && !documentMimeTypes[extension])) return;
     }
 
     const documentMimeType = documentMimeTypes[extension];
@@ -295,28 +355,7 @@ export async function skillFilesForCheck(
       return;
     }
 
-    let entries: ArchiveEntry[] | null;
-    try {
-      entries = archiveEntries(path, bytes, budget);
-      if (entries && depth >= archiveLimits.maxDepth) {
-        throw new ArchiveError("archive too large or too deep");
-      }
-    } catch (error) {
-      if (!(error instanceof ArchiveError)) throw error;
-      refusals.push(refusal(path, error.reason));
-      return;
-    }
-    if (entries) {
-      for (const entry of entries.sort((left, right) => left.path.localeCompare(right.path))) {
-        const entryPath = `${path}!/${entry.path}`;
-        if (entry.symlink) {
-          refusals.push(refusal(entryPath, "symlink"));
-          continue;
-        }
-        await visit(entryPath, entry.bytes, depth + 1, true, true);
-      }
-      return;
-    }
+    if (ruleset !== "v2" && (await visitArchive(path, bytes, depth)) !== "absent") return;
 
     // Refused only when the Skill uses it: named by its text, or packed in an
     // archive it names. Sitting under `scripts/` is not use.

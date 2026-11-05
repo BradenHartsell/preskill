@@ -14,7 +14,7 @@ import { findCredentialValueMatches } from "./credentials.js";
 import { skillEncodedCodeFiles, skillFilesForCheck } from "./file-review.js";
 import type { Judge, JudgeFailureKind } from "./judge.js";
 import { JudgeError } from "./judge.js";
-import { asSentence, questionReasons } from "./questions.js";
+import { asSentence, questionReasons, questionsForRuleset } from "./questions.js";
 import { parseSkillFolder, SkillFormatError } from "./skill.js";
 import { decodeManifestText } from "./text.js";
 import {
@@ -27,15 +27,16 @@ import {
 import type {
   CredentialFinding,
   QuestionId,
+  Ruleset,
   ScanRefusal,
   SkillFileReader,
   SkillFilesForCheck,
   SkillScanInput,
+  SkillSafetyStateSource,
   SkillScanResult,
-  SkillSource,
 } from "./types.js";
-import { SkillReaderError, questionIds } from "./types.js";
-import { defaultRefuseFloor, questionSetVersion } from "./version.js";
+import { SkillReaderError, questionIds, rulesets } from "./types.js";
+import { defaultRefuseFloor, questionSetVersionFor } from "./version.js";
 
 export interface ScanOptions {
   /** The judge to ask. A caller without one should use `createHttpJudge`. */
@@ -53,6 +54,11 @@ export interface ScanOptions {
   readonly signal?: AbortSignal;
   /** Local-only observation of each answered request; never sent anywhere. */
   readonly onJudgeResult?: (result: { requestIndex: number; requestCount: number }) => void;
+  /**
+   * Which rules to apply. Default `"v1"`, the measured question set; `"v2"`
+   * is opt-in. See `Ruleset` and the README.
+   */
+  readonly ruleset?: Ruleset;
 }
 
 function zeroAnswers(): Record<QuestionId, number> {
@@ -167,6 +173,8 @@ async function judgeStates(
         const result = await options.judge.judge(state, {
           ...(options.signal ? { signal: options.signal } : {}),
           timeoutMs: options.timeoutMs ?? defaultTimeoutMs,
+          // v1 calls stay exactly as before; v2 hands the judge its own questions.
+          ...(options.ruleset === "v2" ? { questions: questionsForRuleset("v2") } : {}),
         });
         for (const id of questionIds) {
           const value = result.answers[id];
@@ -196,6 +204,8 @@ async function judgeStates(
  * log, write, or send anything except the judge requests the caller supplied.
  */
 export async function scanSkill(input: SkillScanInput, options: ScanOptions): Promise<SkillScanResult> {
+  const ruleset = options.ruleset ?? "v1";
+  const questionSetVersion = questionSetVersionFor(rulesets.includes(ruleset) ? ruleset : "v1");
   const floor = options.floor ?? defaultRefuseFloor;
   const concurrency = options.concurrency ?? defaultConcurrency;
   const timeoutMs = options.timeoutMs ?? defaultTimeoutMs;
@@ -220,6 +230,9 @@ export async function scanSkill(input: SkillScanInput, options: ScanOptions): Pr
       reasons: { questions: {}, other: [entry.reason] },
     };
   };
+  if (!rulesets.includes(ruleset)) {
+    return invalidConfiguration("The scanner was configured with an unknown ruleset. Nothing was checked.");
+  }
   if (!Number.isFinite(floor) || floor < 0 || floor > 1) {
     return invalidConfiguration("The scanner was configured with an invalid floor. Nothing was checked.");
   }
@@ -229,9 +242,14 @@ export async function scanSkill(input: SkillScanInput, options: ScanOptions): Pr
   if (!Number.isFinite(timeoutMs) || timeoutMs <= 0) {
     return invalidConfiguration("The scanner was configured with an invalid timeout. Nothing was checked.");
   }
-  const scanOptions: ScanOptions = { ...options, floor, concurrency, timeoutMs };
+  const scanOptions: ScanOptions = { ...options, floor, concurrency, timeoutMs, ruleset };
 
-  const missing = input.missingFiles ?? [];
+  const allMissing = input.missingFiles ?? [];
+  // Ruleset v2: a bare document name the source did not find is brought to the
+  // person as a flag, not a hard stop; a bare word is often not a Skill file.
+  const missingToFlag =
+    ruleset === "v2" ? allMissing.filter((file) => file.bareName === true && file.reason === "not_found") : [];
+  const missing = allMissing.filter((file) => !missingToFlag.includes(file));
   if (missing.length > 0) {
     const refusals = missing.map((file) =>
       refusal(file.path, "missing named file", missingSentence(file.path, file.reason)),
@@ -262,7 +280,7 @@ export async function scanSkill(input: SkillScanInput, options: ScanOptions): Pr
   const { skill, files } = parsed;
   let checked: SkillFilesForCheck;
   try {
-    checked = await skillFilesForCheck(skill, files, options.reader);
+    checked = await skillFilesForCheck(skill, files, options.reader, { ruleset });
   } catch (error) {
     if (!(error instanceof SkillReaderError)) throw error;
     const entry = refusal(
@@ -309,7 +327,9 @@ export async function scanSkill(input: SkillScanInput, options: ScanOptions): Pr
     checked,
     decodeManifestText(files.find((file) => file.path === "SKILL.md")?.bytes ?? new Uint8Array()),
   );
-  const source: SkillSource = input.source;
+  // Ruleset v2 never shows a catalog's own verdict to the judge.
+  const source: SkillSafetyStateSource =
+    ruleset === "v2" ? { link: input.source.link, catalog: input.source.catalog } : input.source;
   const personRequest = boundedPersonRequest(
     options.personRequest ?? `Please add this Skill for me: ${source.link}`,
   );
@@ -347,6 +367,7 @@ export async function scanSkill(input: SkillScanInput, options: ScanOptions): Pr
   const flaggedPaths = new Set<string>();
   for (const id of flaggedQuestions) for (const path of pathsByQuestion[id] ?? []) flaggedPaths.add(path);
   for (const finding of credentialFindings) flaggedPaths.add(finding.file);
+  for (const file of missingToFlag) flaggedPaths.add(file.path);
 
   const reasonsOther: string[] = [];
   for (const finding of credentialFindings) {
@@ -356,11 +377,16 @@ export async function scanSkill(input: SkillScanInput, options: ScanOptions): Pr
       }).`,
     );
   }
+  for (const file of missingToFlag) {
+    reasonsOther.push(
+      `${file.path} is named in the Skill's text but was not found at the source, so it was not checked; it may not be one of the Skill's files.`,
+    );
+  }
   const reasonsQuestions = Object.fromEntries(
     flaggedQuestions.map((id) => [id, asSentence(questionReasons[id])]),
   ) as Partial<Record<QuestionId, string>>;
 
-  const flagged = flaggedQuestions.length > 0 || credentialFindings.length > 0;
+  const flagged = flaggedQuestions.length > 0 || credentialFindings.length > 0 || missingToFlag.length > 0;
   const model = [...new Set(judged.models)].sort().join(",");
   return {
     verdict: flagged ? "flagged" : "safe",

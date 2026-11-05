@@ -18,6 +18,21 @@ export interface SkillSource {
   readonly catalog_review: "clean" | "suspicious" | "not_checked";
 }
 
+/**
+ * Which rules the scanner applies. `"v1"` is the default and is the measured
+ * question set the published numbers describe. `"v2"` is opt-in: it judges a
+ * Skill by what its instructions and files do and reads its name and
+ * description only for an instruction aimed at the agent or against the
+ * person's safety; it never shows a catalog's own verdict to the judge; it
+ * refuses archive formats the scanner cannot open and tar headers that would
+ * rename entries in a way it cannot follow; and a linked Skill's bare
+ * document names (`REFERENCE.md`) are read too. See the README.
+ */
+export type Ruleset = "v1" | "v2";
+
+/** Every ruleset, default first. */
+export const rulesets: readonly Ruleset[] = ["v1", "v2"];
+
 /** What the person asked for, plus the files and where they came from. */
 export interface SkillScanInput {
   readonly files: readonly SkillInputFile[];
@@ -25,10 +40,20 @@ export interface SkillScanInput {
   /** The person's own words that carried the link. Bounded by the scanner. */
   readonly personRequest?: string;
   /** Files the Skill named that the source could not return. */
-  readonly missingFiles?: readonly {
-    readonly path: string;
-    readonly reason: "not_found" | "unavailable" | "unsafe_path" | "too_large";
-  }[];
+  readonly missingFiles?: readonly SkillMissingFile[];
+}
+
+/** A file the Skill named that the source could not return. */
+export interface SkillMissingFile {
+  readonly path: string;
+  readonly reason: "not_found" | "unavailable" | "unsafe_path" | "too_large";
+  /**
+   * Ruleset v2 only: the Skill named this file as a bare document name in
+   * prose (`see REFERENCE.md`), not by a link or a path with a folder. Under v2
+   * a bare name the source did not find flags the Skill instead of refusing it,
+   * because a bare word is often not one of the Skill's files.
+   */
+  readonly bareName?: true;
 }
 
 /** The seven question names. */
@@ -71,7 +96,11 @@ export type FileRefusalCode =
   | "archive too large or too deep"
   | "unsafe path"
   | "unreadable file type"
-  | "symlink";
+  | "symlink"
+  /** Ruleset v2: an archive or compression format the scanner does not unpack (7z, RAR, xz and others). */
+  | "archive format this check cannot open"
+  /** Ruleset v2: a tar header that renames or reshapes entries in a way the scanner cannot follow. */
+  | "archive feature that cannot be checked";
 
 /** Every hard refusal the scanner can return. */
 export type RefusalCode =
@@ -124,10 +153,19 @@ export interface SkillDocument {
   readonly text: string;
 }
 
+/**
+ * Where the Skill came from, as the judge reads it. Ruleset v1 carries
+ * `catalog_review`; ruleset v2 leaves it out, so a third-party verdict never
+ * reaches the judge.
+ */
+export type SkillSafetyStateSource = Omit<SkillSource, "catalog_review"> & {
+  readonly catalog_review?: SkillSource["catalog_review"];
+};
+
 /** Exactly what one judge request reads. */
 export interface SkillSafetyState {
   readonly person_request: string;
-  readonly source: SkillSource;
+  readonly source: SkillSafetyStateSource;
   readonly skill: {
     readonly name: string;
     readonly description: string;

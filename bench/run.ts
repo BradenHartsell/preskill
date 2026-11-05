@@ -18,6 +18,7 @@ import { fileURLToPath } from "node:url";
 import { createHttpJudge, defaultModels, type Judge, type JudgeProvider } from "../src/judge.js";
 import { questionIds, type QuestionId, type SkillInputFile } from "../src/types.js";
 import { scanSkill } from "../src/scanner.js";
+import { questionSetName, questionSetNameV2 } from "../src/version.js";
 
 const labels = ["harmless", "harmful"] as const;
 type Label = (typeof labels)[number];
@@ -37,6 +38,8 @@ export interface BenchOptions {
   readonly concurrency: number;
   readonly maxSkills?: number;
   readonly out?: string;
+  /** Default v1. A held-out number is per ruleset: a v1 run says nothing about v2. */
+  readonly ruleset?: "v1" | "v2";
 }
 
 interface SkillCase {
@@ -270,6 +273,7 @@ export async function runBench(options: BenchOptions): Promise<Record<string, un
         judge: trackedJudge,
         floor: 0.05,
         concurrency: options.concurrency,
+        ...(options.ruleset === "v2" ? { ruleset: "v2" as const } : {}),
       },
     );
     const invalid = result.refusals.find((entry) => entry.code === "invalid skill");
@@ -334,7 +338,7 @@ export async function runBench(options: BenchOptions): Promise<Record<string, un
     set: options.set,
     dry_run: options.dryRun,
     model: options.dryRun ? modelFromOptions(options) : baseJudge.model,
-    question_set: "skill-install-safety-v9-oss",
+    question_set: options.ruleset === "v2" ? questionSetNameV2 : questionSetName,
     floors: options.floors,
     counts: Object.fromEntries(
       labels.map((label) => [
@@ -447,6 +451,7 @@ async function main(): Promise<void> {
         "  --dry-run               No model calls; request counts only.",
         "  --concurrency <n>       Requests per Skill. Default 6.",
         "  --max-skills <n>        Take the first n Skills.",
+        "  --ruleset v1|v2         Which rules to apply. Default v1.",
         "  --json                  Print the aggregate JSON only.",
         "  --out <file>            Write the aggregate JSON to a file.",
       ].join("\n"),
@@ -473,6 +478,8 @@ async function main(): Promise<void> {
   const endpointValue = value("--endpoint");
   const maxSkillsValue = value("--max-skills");
   const outValue = value("--out");
+  const rulesetValue = value("--ruleset");
+  if (rulesetValue !== undefined && rulesetValue !== "v1" && rulesetValue !== "v2") throw new Error("ruleset_must_be_v1_or_v2");
   const concurrency = Number(value("--concurrency") ?? "6");
   if (!Number.isInteger(concurrency) || concurrency < 1) throw new Error("concurrency_invalid");
   if (maxSkillsValue !== undefined && (!Number.isInteger(Number(maxSkillsValue)) || Number(maxSkillsValue) < 1)) {
@@ -493,6 +500,7 @@ async function main(): Promise<void> {
     concurrency,
     ...(maxSkillsValue ? { maxSkills: Number(maxSkillsValue) } : {}),
     ...(outValue ? { out: outValue } : {}),
+    ...(rulesetValue === "v2" ? { ruleset: "v2" as const } : {}),
   };
   const aggregate = await runBench(options);
   process.stdout.write(argv.includes("--json") ? `${JSON.stringify(aggregate, null, 2)}\n` : `${human(aggregate)}\n`);
